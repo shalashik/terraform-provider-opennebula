@@ -798,17 +798,20 @@ func resourceOpennebulaVirtualMachineRead(ctx context.Context, d *schema.Resourc
 		var diags diag.Diagnostics
 
 		// NOTE: The template_id attribute is not defined for Virtual Router instances (VMs).
-		if _, ok := d.GetOk("template_id"); ok {
-			// read template ID from which the VM was created
-			templateID, _ := vmInfos.Template.GetInt("TEMPLATE_ID")
-			d.Set("template_id", templateID)
+		vrouterID, _ := vmInfos.Template.GetInt("VROUTER_ID")
+		if vrouterID == -1 {
+			if _, ok := d.GetOk("template_id"); !ok {
+				// read template ID from which the VM was created
+				templateID, _ := vmInfos.Template.GetInt("TEMPLATE_ID")
+				d.Set("template_id", templateID)
 
-			if _, ok := d.GetOk("template_nic"); !ok {
-				d.Set("template_nic", []interface{}{})
-			}
+				if _, ok := d.GetOk("template_nic"); !ok {
+					d.Set("template_nic", []interface{}{})
+				}
 
-			if _, ok := d.GetOk("template_nic_alias"); !ok {
-				d.Set("template_nic_alias", []interface{}{})
+				if _, ok := d.GetOk("template_nic_alias"); !ok {
+					d.Set("template_nic_alias", []interface{}{})
+				}
 			}
 		}
 
@@ -833,9 +836,7 @@ func resourceOpennebulaVirtualMachineRead(ctx context.Context, d *schema.Resourc
 			return diags
 		}
 
-		// In case of Virtual Router instances (which are just VMs) there's never anything to "flatten",
-		// that's because NICs are attached with a help of dedicated resources.
-		if _, ok := d.GetOk("nic"); ok {
+		if vrouterID == -1 {
 			err = flattenVMNIC(d, &vmInfos.Template)
 			if err != nil {
 				diags = append(diags, diag.Diagnostic{
@@ -848,7 +849,7 @@ func resourceOpennebulaVirtualMachineRead(ctx context.Context, d *schema.Resourc
 		}
 
 		if _, ok := d.GetOk("nic_alias"); ok {
-			err = flattenVMNICAliases(d, &vmInfos.Template)
+			err := flattenVMNICAliases(d, &vmInfos.Template)
 			if err != nil {
 				diags = append(diags, diag.Diagnostic{
 					Severity: diag.Error,
@@ -995,6 +996,16 @@ func flattenVMDisk(d *schema.ResourceData, vmTemplate *vm.Template) error {
 	diskConfigs := d.Get("disk").([]interface{})
 
 	diskList := make([]interface{}, 0, len(disks))
+	if len(diskConfigs) == 0 {
+		for _, disk := range disks {
+			diskList = append(diskList, flattenDisk(disk))
+		}
+		err := d.Set("disk", diskList)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 
 diskLoop:
 	for _, disk := range disks {
@@ -1512,6 +1523,23 @@ func flattenVMNIC(d *schema.ResourceData, vmTemplate *vm.Template) error {
 	nicsConfigs := d.Get("nic").([]interface{}) //nics from resource
 
 	nicList := make([]interface{}, 0, len(nics))
+
+	if len(nicsConfigs) == 0 {
+		// Add template values for import
+		for _, nic := range nics {
+			nicList = append(nicList, flattenNIC(nic))
+		}
+		// In case of Virtual Router instances (which are just VMs) there's never anything to "flatten",
+		// that's because NICs are attached with a help of dedicated resources.
+		// So we don't initialize an empty NIC
+		if len(nicList) == 0 {
+			err := d.Set("nic", nicList)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
 	for i, nic := range nics {
 

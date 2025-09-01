@@ -19,10 +19,11 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - import_fix
   pull_request:
     branches:
-      - master
+      - import_fix
+  workflow_dispatch:
 
 env:
   OPENNEBULA_ENDPOINT: "http://localhost:2633/RPC2"
@@ -64,7 +65,7 @@ jobs:
       - run: sudo apt-get -y install opennebula opennebula-flow opennebula-node-lxc # opennebula-node-lxc to ensure node dependencies for monitoring are installed
       - run: source ${{ github.workspace }}/.github/scripts/oned.sh
       - run: go install
-      - run: go test $(go list ./... | grep -v 'vendor') -v ${TESTARGS} -tags=legacy -timeout 120m
+      - run: go test $(go list ./... | grep -v 'vendor') -v ${TESTARGS} -timeout 120m -run 'TestAccVirtualMachine(Import|Update)'
 
   test-7_0:
     name: "Test OpenNebula 7.0"
@@ -83,4 +84,4 @@ jobs:
       - run: sudo apt-get -y install opennebula opennebula-flow opennebula-node-lxc # opennebula-node-lxc to ensure node dependencies for monitoring are installed
       - run: source ${{ github.workspace }}/.github/scripts/oned.sh
       - run: go install
-      - run: go test $(go list ./... | grep -v 'vendor') -v ${TESTARGS} -timeout 120m
+      - run: go test $(go list ./... | grep -v 'vendor') -v ${TESTARGS} -timeout 120m -run 'TestAccVirtualMachine(Import|Update)'

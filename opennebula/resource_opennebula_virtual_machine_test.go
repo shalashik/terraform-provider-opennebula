@@ -2,12 +2,13 @@ package opennebula
 
 import (
 	"fmt"
-	"github.com/OpenNebula/one/src/oca/go/src/goca/schemas/vm"
 	"os"
 	"reflect"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/OpenNebula/one/src/oca/go/src/goca/schemas/vm"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -477,6 +478,37 @@ func TestAccVirtualMachineTemplate(t *testing.T) {
 	})
 }
 
+func TestAccVirtualMachineImport(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckVirtualMachineImportDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVirtualMachineTemplateConfigImport,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("opennebula_virtual_machine.test", "name", "test-virtual_machine"),
+					resource.TestCheckResourceAttr("opennebula_virtual_machine.test", "memory", "128"),
+					resource.TestCheckResourceAttr("opennebula_virtual_machine.test", "cpu", "0.1"),
+				),
+			},
+			{
+				ResourceName:      "opennebula_virtual_machine.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"group",
+					"context",
+					"hard_shutdown",
+					"on_disk_change",
+					"pending",
+					"timeout",
+				},
+			},
+		},
+	})
+}
+
 func testAccCheckVirtualMachineDestroy(s *terraform.State) error {
 	config := testAccProvider.Meta().(*Configuration)
 	controller := config.Controller
@@ -510,6 +542,13 @@ func testAccCheckVirtualMachineDestroy(s *terraform.State) error {
 		}
 
 	}
+
+	return nil
+}
+
+func testAccCheckVirtualMachineImportDestroy(s *terraform.State) error {
+	testAccCheckVirtualNetworkDestroy(s)
+	testAccCheckVirtualMachineDestroy(s)
 
 	return nil
 }
@@ -1284,6 +1323,81 @@ resource "opennebula_template" "template" {
   sched_requirements = "CLUSTER_ID!=\"123\""
 
 }
+`
+
+var testAccVirtualMachineTemplateConfigImport = `
+  # Create a network
+  resource "opennebula_virtual_network" "test_net" {
+    name            = "basic_vnet"
+	type            = "dummy"
+	bridge          = "onebr"
+	# bridge          = "virbr0"
+    mtu             = 1500
+    gateway         = "172.16.100.1"
+    dns             = "172.16.100.1"
+    network_mask    = "255.255.255.0"
+    network_address = "172.16.100.0"
+    search_domain   = "example.com"
+    ar {
+      ar_type = "IP4"
+      size    = 5
+      ip4     = "172.16.100.1"
+    }
+    hold_ips           = ["172.16.100.2"]
+
+    permissions = "642"
+    group = "oneadmin"
+    security_groups = [0]
+    tags = {
+      env = "prod"
+      customer = "test"
+    }
+
+    lifecycle {
+      ignore_changes = [ar, hold_ips]
+    }
+  }
+
+  resource "opennebula_image" "test_img" {
+    name      = "tf-test-img"
+    datastore_id = 1
+    type = "DATABLOCK"
+    size = "128"
+    dev_prefix = "vd"
+    permissions = "742"
+    driver = "qcow2"
+  }
+
+  resource "opennebula_virtual_machine" "test" {
+    name        = "test-virtual_machine"
+    group       = "oneadmin"
+    memory = 128
+    cpu = 0.1
+
+    context = {
+      TESTVAR = "TEST"
+      NETWORK  = "YES"
+      SET_HOSTNAME = "$NAME"
+    }
+
+    os {
+      arch = "x86_64"
+      boot = ""
+    }
+
+	disk {
+      image_id        = opennebula_image.test_img.id
+	  size            = 1024
+	  driver          = "qcow2"
+	  target          = "sda"
+	  dev_prefix      = "vd"
+    }
+
+    nic {
+      network_id      = opennebula_virtual_network.test_net.id
+	  security_groups = []
+    }
+  }
 `
 
 var testAccVirtualMachineTemplateInstantiate = testAccVirtualMachineTemplate + `

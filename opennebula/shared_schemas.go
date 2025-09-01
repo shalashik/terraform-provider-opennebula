@@ -364,7 +364,7 @@ func diskFields(customFields ...map[string]*schema.Schema) map[string]*schema.Sc
 			Optional:    true,
 			Description: "Type of the volatile disk: swap or fs.",
 			ValidateFunc: func(v interface{}, k string) (ws []string, errors []error) {
-				validtypes := []string{"swap", "fs"}
+				validtypes := []string{"swap", "fs", "FILE"}
 				value := v.(string)
 
 				if !contains(value, validtypes) {
